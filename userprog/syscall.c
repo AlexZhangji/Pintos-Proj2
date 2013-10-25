@@ -245,7 +245,7 @@ sys_open (const char *ufile)
       lock_release (&fs_lock);
     }
   palloc_free_page (kfile);
-printf("HANDLE = %d\n", handle);
+// added for debugging - printf("HANDLE = %d\n", handle);
 
   return handle;
 
@@ -372,5 +372,6 @@ void
 syscall_exit (void) 
 {
 /* Add code */
+  // Need to add code here similar to lookup_fd to close all of the current thread's fds
   return;
 }
