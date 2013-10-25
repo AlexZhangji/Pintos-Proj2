@@ -49,27 +49,6 @@ process_execute (const char *file_name)
   exec.file_name = file_name;
   sema_init (&exec.load_done, 0);
 
-  /* Begin Dom addition ********************************/
-  char s[16];
-  strlcpy (s, file_name, sizeof thread_name);  
-  char *token, *arg;
-  int arg_count = -1; // the file name doesn't count
-
-  for (token = strtok_r (s, " ", &save_ptr); token != NULL;
-       token = strtok_r (NULL, " ", &save_ptr))
-	{
-	   arg_count++;
-	   arg = token;
-	}
-    //printf ("'%s'\n", token);
-	
-	
-  printf("FILE NAME: %s\n", s);
-  printf("ARGC = %i\n", arg_count);
-  printf("arg[0] = %s\n", arg);
-  
-  /* END Dom addition **********************************/
-
   /* Create a new thread to execute FILE_NAME. */
   strlcpy (thread_name, file_name, sizeof thread_name);
   strtok_r (thread_name, " ", &save_ptr);
@@ -534,8 +513,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static void
 reverse (int argc, char **argv) 
 {
-   /* add code */
-
+   // MLN added code to reverse the order of the arguments on the stack
+   for (; argc>1; argc -=2, argv++)
+   {
+      char *tmp = argv[0];
+      argv[0] = argv[argc-1];
+      argv[argc-1] = tmp;
+   }
    return;
 }
 

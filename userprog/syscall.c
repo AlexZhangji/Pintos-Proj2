@@ -45,10 +45,50 @@ syscall_init (void)
 /* System call handler. */
 
 static void
-syscall_handler (struct intr_frame *f UNUSED)
+syscall_handler (struct intr_frame *f)
 {
-  printf ("system call!\n");
-  thread_exit ();
+  typedef int syscall_function (int, int, int);
+  /* A system call. */
+  struct syscall
+    {
+      size_t arg_cnt;           /* Number of arguments. */
+      syscall_function *func;   /* Implementation. */
+    };
+  /* Table of system calls. */
+  static const struct syscall syscall_table[] =
+    {
+      {0, (syscall_function *) sys_halt},
+      {1, (syscall_function *) sys_exit},
+      {1, (syscall_function *) sys_exec},
+      {1, (syscall_function *) sys_wait},
+      {2, (syscall_function *) sys_create},
+      {1, (syscall_function *) sys_remove},
+      {1, (syscall_function *) sys_open},
+      {1, (syscall_function *) sys_filesize},
+      {3, (syscall_function *) sys_read},
+      {3, (syscall_function *) sys_write},
+      {2, (syscall_function *) sys_seek},
+      {1, (syscall_function *) sys_tell},
+      {1, (syscall_function *) sys_close}
+    };
+  const struct syscall *sc;
+  unsigned call_nr;
+  int args[3];
+
+  /* Get the system call. */
+  copy_in (&call_nr, f->esp, sizeof call_nr);
+  if (call_nr >= sizeof syscall_table / sizeof *syscall_table)
+    thread_exit ();
+  sc = syscall_table + call_nr;
+
+  /* Get the system call arguments. */
+  ASSERT (sc->arg_cnt <= sizeof args / sizeof *args);
+  memset (args, 0, sizeof args);
+  copy_in (args, (uint32_t *) f->esp + 1, sizeof *args * sc->arg_cnt);
+
+  /* Execute the system call,
+     and set the return value. */
+  f->eax = sc->func (args[0], args[1], args[2]);
 }
 
 /* Returns true if UADDR is a valid, mapped user address,
@@ -204,9 +244,11 @@ sys_open (const char *ufile)
         free (fd);
       lock_release (&fs_lock);
     }
-  
   palloc_free_page (kfile);
+printf("HANDLE = %d\n", handle);
+
   return handle;
+
 }
  
 /* Returns the file descriptor associated with the given handle.
@@ -216,7 +258,17 @@ static struct file_descriptor *
 lookup_fd (int handle)
 {
 /* Add code to lookup file descriptor in the current thread's fds */
-  thread_exit ();
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+
+  for (e=list_begin (&cur->fds); e!=list_end(&cur->fds); e=list_next(e))
+  {
+    struct file_descriptor *fd;
+    fd = list_entry (e, struct file_descriptor, elem);
+    if (fd->handle == handle)
+      return fd;
+  }
+  thread_exit();
 }
  
 /* Filesize system call. */
