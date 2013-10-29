@@ -379,8 +379,18 @@ sys_close (int handle)
 void
 syscall_exit (void) 
 {
-/* Add code */
-  // Need to add code here similar to lookup_fd to close all of the current thread's fds
- 
+  // Added code to close all of the thread's open fds
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+
+  for (e=list_begin(&cur->fds); e!=list_end(&cur->fds); e = list_next(e))
+  {
+    struct file_descriptor *fd;
+    fd = list_entry(e, struct file_descriptor, elem);
+    lock_acquire (&fs_lock);
+    file_close (fd->file);
+    lock_release (&fs_lock);
+    free(fd);
+  }
   return;
 }
