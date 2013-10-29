@@ -19,8 +19,8 @@ static int sys_halt (void);
 static int sys_exit (int status);
 static int sys_exec (const char *ufile);
 static int sys_wait (tid_t);
-static int sys_create (const char *ufile, unsigned initial_size);
-static int sys_remove (const char *ufile);
+static bool sys_create (const char *ufile, unsigned initial_size);
+static bool sys_remove (const char *ufile);
 static int sys_open (const char *ufile);
 static int sys_filesize (int handle);
 static int sys_read (int handle, void *udst_, unsigned size);
@@ -200,17 +200,25 @@ sys_wait (tid_t child)
 }
  
 /* Create system call. */
-static int
+static bool
 sys_create (const char *ufile, unsigned initial_size) 
 {
-  return 0;
+  lock_acquire (&fs_lock);
+  // for debugging - printf("creating file %s", ufile);
+  bool ret = filesys_create(ufile, initial_size);
+  lock_release (&fs_lock);
+  return ret;
 }
  
 /* Remove system call. */
-static int
+static bool
 sys_remove (const char *ufile) 
 {
-/* Add code */
+  lock_acquire (&fs_lock);
+  // for debugging - printf("removing file %s", ufile);
+  bool ret = filesys_remove(ufile);
+  lock_release (&fs_lock);
+  return ret;
 }
  
 /* A file descriptor, for binding a file handle to a file. */
@@ -373,5 +381,6 @@ syscall_exit (void)
 {
 /* Add code */
   // Need to add code here similar to lookup_fd to close all of the current thread's fds
+ 
   return;
 }
