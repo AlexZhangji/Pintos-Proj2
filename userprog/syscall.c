@@ -25,9 +25,9 @@ static int sys_open (const char *ufile);
 static int sys_filesize (int handle);
 static int sys_read (int handle, void *udst_, unsigned size);
 static int sys_write (int handle, void *usrc_, unsigned size);
-static int sys_seek (int handle, unsigned position);
+static void sys_seek (int handle, unsigned position);
 static int sys_tell (int handle);
-static int sys_close (int handle);
+static void sys_close (int handle);
  
 static void syscall_handler (struct intr_frame *);
 static void copy_in (void *, const void *, size_t);
@@ -284,7 +284,12 @@ static int
 sys_filesize (int handle) 
 {
 /* Add code */
-  thread_exit ();
+  struct file_descriptor *fd = lookup_fd(handle);
+  lock_acquire (&fs_lock);
+  int size = file_length (fd->file);
+  lock_release (&fs_lock);
+  
+  return size;
 }
  
 /* Read system call. */
@@ -352,11 +357,14 @@ sys_write (int handle, void *usrc_, unsigned size)
 }
  
 /* Seek system call. */
-static int
+static void
 sys_seek (int handle, unsigned position) 
 {
 /* Add code */
-  thread_exit ();
+  struct file_descriptor *fd = lookup_fd(handle);
+  lock_acquire (&fs_lock);
+  file_seek (fd->file, position);
+  lock_release (&fs_lock);
 }
  
 /* Tell system call. */
@@ -364,23 +372,54 @@ static int
 sys_tell (int handle) 
 {
 /* Add code */
-  thread_exit ();
+  struct file_descriptor *fd = lookup_fd(handle);
+  lock_acquire (&fs_lock);
+  int tell = file_tell (fd->file);
+  lock_release (&fs_lock);
+  
+  return tell;
 }
  
 /* Close system call. */
-static int
+static void
 sys_close (int handle) 
 {
 /* Add code */
-  thread_exit ();
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+
+  for (e=list_begin(&cur->fds); e!=list_end(&cur->fds); e = list_next(e))
+  {
+    struct file_descriptor *fd;
+    fd = list_entry(e, struct file_descriptor, elem);
+    if(handle == fd->handle)
+    {
+      lock_acquire (&fs_lock);
+      file_close (fd->file);
+      lock_release (&fs_lock);
+      list_remove(e);
+      free(fd);
+      return;
+    }    
+  }
 }
  
 /* On thread exit, close all open files. */
 void
 syscall_exit (void) 
 {
-/* Add code */
-  // Need to add code here similar to lookup_fd to close all of the current thread's fds
- 
+  // Added code to close all of the thread's open fds
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+
+  for (e=list_begin(&cur->fds); e!=list_end(&cur->fds); e = list_next(e))
+  {
+    struct file_descriptor *fd;
+    fd = list_entry(e, struct file_descriptor, elem);
+    lock_acquire (&fs_lock);
+    file_close (fd->file);
+    lock_release (&fs_lock);
+    free(fd);
+  }
   return;
 }
