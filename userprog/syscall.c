@@ -360,7 +360,11 @@ sys_write (int handle, void *usrc_, unsigned size)
 static void
 sys_seek (int handle, unsigned position) 
 {
+ // We probably still need to return an integer to indicate success (0) or failure (-1)
+ // if the handle is not valid or if the position is negative, then return -1
 /* Add code */
+  int return_value = -1;
+  
   struct file_descriptor *fd = lookup_fd(handle);
   lock_acquire (&fs_lock);
   file_seek (fd->file, position);
