@@ -89,6 +89,7 @@ syscall_handler (struct intr_frame *f)
   /* Execute the system call,
      and set the return value. */
   f->eax = sc->func (args[0], args[1], args[2]);
+  //printf("return from syscall handler\n");
 }
 
 /* Returns true if UADDR is a valid, mapped user address,
@@ -136,6 +137,7 @@ copy_in (void *dst_, const void *usrc_, size_t size)
   for (; size > 0; size--, dst++, usrc++) 
     if (usrc >= (uint8_t *) PHYS_BASE || !get_user (dst, usrc)) 
       thread_exit ();
+    
 }
  
 /* Creates a copy of user string US in kernel memory
@@ -179,6 +181,7 @@ static int
 sys_exit (int exit_code) 
 {
   thread_current ()->wait_status->exit_code = exit_code;
+  //syscall_exit ();
   thread_exit ();
   NOT_REACHED ();
 }
@@ -188,6 +191,16 @@ static int
 sys_exec (const char *ufile) 
 {
 /* Add code */
+  tid_t tid;
+  char *kfile = copy_in_string(ufile);
+  
+  lock_acquire (&fs_lock);
+  process_execute(ufile);
+  lock_release (&fs_lock);
+  
+  palloc_free_page(kfile);
+  
+  return tid;
   thread_exit ();
 }
  
@@ -196,6 +209,7 @@ static int
 sys_wait (tid_t child) 
 {
 /* Add code */
+  return process_wait (child);
   thread_exit ();
 }
  
@@ -203,6 +217,11 @@ sys_wait (tid_t child)
 static bool
 sys_create (const char *ufile, unsigned initial_size) 
 {
+  if(ufile == NULL || !verify_user(ufile)) 
+  {
+    thread_exit ();
+  }
+  
   lock_acquire (&fs_lock);
   // for debugging - printf("creating file %s", ufile);
   bool ret = filesys_create(ufile, initial_size);
@@ -233,27 +252,38 @@ struct file_descriptor
 static int
 sys_open (const char *ufile) 
 {
+  //printf("in sys_open with file: %s\n", ufile);
+  if(ufile == NULL) return -1;  
+  if(!verify_user(ufile)) thread_exit ();
   char *kfile = copy_in_string (ufile);
   struct file_descriptor *fd;
   int handle = -1;
+  //printf("open 2\n");
  
   fd = malloc (sizeof *fd);
+  //printf("open 3\n");
   if (fd != NULL)
     {
+      //printf("open 4\n");
       lock_acquire (&fs_lock);
       fd->file = filesys_open (kfile);
+    //  printf("open 4.5");
       if (fd->file != NULL)
         {
+	//	  printf("open 5\n");
           struct thread *cur = thread_current ();
           handle = fd->handle = cur->next_handle++;
           list_push_front (&cur->fds, &fd->elem);
         }
       else 
+	 //   printf("open 6\n");
         free (fd);
       lock_release (&fs_lock);
     }
+  //printf("open 7\n");
   palloc_free_page (kfile);
-// added for debugging - printf("HANDLE = %d\n", handle);
+// added for debugging - 
+  //printf("HANDLE = %d\n", handle);
 
   return handle;
 
@@ -297,6 +327,27 @@ static int
 sys_read (int handle, void *udst_, unsigned size) 
 {
 /* Add code */
+  uint8_t* udst = udst_;
+  if (handle == STDIN_FILENO) //standard in
+  {
+    int i;
+    for (i = 0; i < size; i++)
+    {
+      udst[i] = input_getc();
+    }
+    return size; 
+  }
+  
+  if (!verify_user (udst)) 
+  {
+    thread_exit ();
+  }
+  struct file_descriptor *fd = lookup_fd(handle);
+  lock_acquire(&fs_lock);
+  int bytes_read = file_read (fd->file, udst, size);
+  lock_release(&fs_lock);
+  return bytes_read;
+  
   thread_exit ();
 }
  
@@ -389,6 +440,7 @@ static void
 sys_close (int handle) 
 {
 /* Add code */
+  //printf("calling sys_close\n");
   struct thread *cur = thread_current();
   struct list_elem *e;
 
@@ -398,6 +450,7 @@ sys_close (int handle)
     fd = list_entry(e, struct file_descriptor, elem);
     if(handle == fd->handle)
     {
+	  //printf("found file to close");
       lock_acquire (&fs_lock);
       file_close (fd->file);
       lock_release (&fs_lock);
