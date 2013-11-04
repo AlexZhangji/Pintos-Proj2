@@ -195,11 +195,15 @@ sys_exec (const char *ufile)
   char *kfile = copy_in_string(ufile);
   
   lock_acquire (&fs_lock);
-  process_execute(ufile);
+  tid_t child_tid = process_execute(kfile);
   lock_release (&fs_lock);
   
   palloc_free_page(kfile);
   
+  if(child_tid == TID_ERROR)
+  {
+    thread_exit ();
+  }
   return tid;
   thread_exit ();
 }
