@@ -89,7 +89,6 @@ syscall_handler (struct intr_frame *f)
   /* Execute the system call,
      and set the return value. */
   f->eax = sc->func (args[0], args[1], args[2]);
-  //printf("return from syscall handler\n");
 }
 
 /* Returns true if UADDR is a valid, mapped user address,
@@ -191,10 +190,13 @@ static int
 sys_exec (const char *ufile) 
 {
 /* Add code */
-  tid_t tid;
+  if(ufile == NULL || !verify_user(ufile)) 
+  {
+    thread_exit ();
+  }
   char *kfile = copy_in_string(ufile);
   
-  lock_acquire (&fs_lock);
+  lock_acquire (&fs_lock);  
   tid_t child_tid = process_execute(kfile);
   lock_release (&fs_lock);
   
@@ -202,17 +204,19 @@ sys_exec (const char *ufile)
   
   if(child_tid == TID_ERROR)
   {
-    thread_exit ();
+    return -1;
+  } 
+  else
+  {
+    return child_tid;
   }
-  return tid;
-  thread_exit ();
+  
 }
  
 /* Wait system call. */
 static int
 sys_wait (tid_t child) 
 {
-/* Add code */
   return process_wait (child);
   thread_exit ();
 }
@@ -227,7 +231,6 @@ sys_create (const char *ufile, unsigned initial_size)
   }
   
   lock_acquire (&fs_lock);
-  // for debugging - printf("creating file %s", ufile);
   bool ret = filesys_create(ufile, initial_size);
   lock_release (&fs_lock);
   return ret;
@@ -238,7 +241,6 @@ static bool
 sys_remove (const char *ufile) 
 {
   lock_acquire (&fs_lock);
-  // for debugging - printf("removing file %s", ufile);
   bool ret = filesys_remove(ufile);
   lock_release (&fs_lock);
   return ret;
@@ -256,41 +258,30 @@ struct file_descriptor
 static int
 sys_open (const char *ufile) 
 {
-  //printf("in sys_open with file: %s\n", ufile);
   if(ufile == NULL) return -1;  
   if(!verify_user(ufile)) thread_exit ();
   char *kfile = copy_in_string (ufile);
   struct file_descriptor *fd;
   int handle = -1;
-  //printf("open 2\n");
  
   fd = malloc (sizeof *fd);
-  //printf("open 3\n");
   if (fd != NULL)
     {
-      //printf("open 4\n");
       lock_acquire (&fs_lock);
       fd->file = filesys_open (kfile);
-    //  printf("open 4.5");
       if (fd->file != NULL)
         {
-	//	  printf("open 5\n");
           struct thread *cur = thread_current ();
           handle = fd->handle = cur->next_handle++;
           list_push_front (&cur->fds, &fd->elem);
         }
       else 
-	 //   printf("open 6\n");
         free (fd);
       lock_release (&fs_lock);
     }
-  //printf("open 7\n");
   palloc_free_page (kfile);
-// added for debugging - 
-  //printf("HANDLE = %d\n", handle);
 
   return handle;
-
 }
  
 /* Returns the file descriptor associated with the given handle.
@@ -299,7 +290,6 @@ sys_open (const char *ufile)
 static struct file_descriptor *
 lookup_fd (int handle)
 {
-/* Add code to lookup file descriptor in the current thread's fds */
   struct thread *cur = thread_current();
   struct list_elem *e;
 
@@ -317,7 +307,6 @@ lookup_fd (int handle)
 static int
 sys_filesize (int handle) 
 {
-/* Add code */
   struct file_descriptor *fd = lookup_fd(handle);
   lock_acquire (&fs_lock);
   int size = file_length (fd->file);
@@ -330,7 +319,6 @@ sys_filesize (int handle)
 static int
 sys_read (int handle, void *udst_, unsigned size) 
 {
-/* Add code */
   uint8_t* udst = udst_;
   if (handle == STDIN_FILENO) //standard in
   {
@@ -415,9 +403,6 @@ sys_write (int handle, void *usrc_, unsigned size)
 static void
 sys_seek (int handle, unsigned position) 
 {
- // We probably still need to return an integer to indicate success (0) or failure (-1)
- // if the handle is not valid or if the position is negative, then return -1
-/* Add code */
   int return_value = -1;
   
   struct file_descriptor *fd = lookup_fd(handle);
@@ -430,7 +415,6 @@ sys_seek (int handle, unsigned position)
 static int
 sys_tell (int handle) 
 {
-/* Add code */
   struct file_descriptor *fd = lookup_fd(handle);
   lock_acquire (&fs_lock);
   int tell = file_tell (fd->file);
@@ -443,8 +427,6 @@ sys_tell (int handle)
 static void
 sys_close (int handle) 
 {
-/* Add code */
-  //printf("calling sys_close\n");
   struct thread *cur = thread_current();
   struct list_elem *e;
 
@@ -454,7 +436,6 @@ sys_close (int handle)
     fd = list_entry(e, struct file_descriptor, elem);
     if(handle == fd->handle)
     {
-	  //printf("found file to close");
       lock_acquire (&fs_lock);
       file_close (fd->file);
       lock_release (&fs_lock);
@@ -463,13 +444,13 @@ sys_close (int handle)
       return;
     }    
   }
+  thread_exit (); // file was not found
 }
  
 /* On thread exit, close all open files. */
 void
 syscall_exit (void) 
 {
-  // Added code to close all of the thread's open fds
   struct thread *cur = thread_current();
   struct list_elem *e;
 

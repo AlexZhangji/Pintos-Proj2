@@ -94,10 +94,12 @@ start_process (void *exec_)
   if (success) 
     {
       lock_init (&exec->wait_status->lock);
+      lock_init (&exec->wait_status->wait_lock);
       exec->wait_status->ref_cnt = 2;
       exec->wait_status->tid = thread_current ()->tid;
       exec->wait_status->exit_code = -1;
       sema_init (&exec->wait_status->dead, 0);
+      exec->wait_status->waited = false;
     }
   
   /* Notify parent thread and clean up. */
@@ -148,7 +150,6 @@ process_wait (tid_t child_tid)
   }
   /* at this point we know thread is dead, return exit code */
   return ws->exit_code;
-  return -1;
 }
 
 struct wait_status *get_wait_status(tid_t tid)
@@ -160,8 +161,14 @@ struct wait_status *get_wait_status(tid_t tid)
   {
     struct wait_status *ws;
     ws = list_entry (e, struct wait_status, elem);
-    if (ws->tid == tid)
+    lock_acquire(&ws->wait_lock);
+    if (ws->tid == tid && ws->waited == false)
+    {
+      ws->waited = true;
+      lock_release (&ws->wait_lock);
       return ws;
+    }
+    lock_release (&ws->wait_lock);      
   }
   return NULL;
 }
